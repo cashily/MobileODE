@@ -1,0 +1,42 @@
+
+import math
+from typing import Dict
+
+from utils.math_utils import make_divisible
+
+
+def get_configuration(opts) -> Dict:
+    width_mult = getattr(opts, "model.classification.mobilenetv1.width_multiplier", 1.0)
+
+    def scale_channels(in_channels):
+        return make_divisible(int(math.ceil(in_channels * width_mult)), 16)
+
+    config = {
+        "conv1_out": scale_channels(32),
+        "layer1": {"out_channels": scale_channels(64), "stride": 1, "repeat": 1},
+        "layer2": {
+            "out_channels": scale_channels(144),
+            "stride": 1, #2 for imagesize=256*256
+            "repeat": 1,
+            "layer":2
+        },
+        "layer3": {
+            "out_channels": scale_channels(256),
+            "stride": 2,
+            "repeat": 1,
+            "layer":3
+        },
+        "layer4": {
+            "out_channels": scale_channels(576),
+            "stride": 2,
+            "repeat": 5,
+            "layer":4
+        },
+        "layer5": {
+            "out_channels": scale_channels(576),
+            "stride": 2,
+            "repeat": 1,
+            "layer":5
+        },
+    }
+    return config

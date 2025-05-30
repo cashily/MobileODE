@@ -1,0 +1,46 @@
+psutil
+scikit-learn
+scikit-image
+
+# requirement for Pytorch, Torchvision, TorchText
+torch
+torchvision
+torchtext
+torchaudio
+torchdata
+
+# dependency for coremltools
+coremltools
+
+# dependency for MSCOCO dataset
+pycocotools
+
+# dependency for cityscape evaluation
+cityscapesscripts
+
+# added as a dependency to reproduce 3rd party models
+pytorchvideo
+
+# PyAV for video decoding
+av
+
+# FVCore for FLOP calculation
+fvcore
+
+# black for reformatting
+black==22.10.0
+
+isort==5.12.0
+
+# testing
+pytest
+pytest-mock
+
+# torchtext for multi-model learning
+ftfy
+
+# for hdf5 reading
+h5py
+
+# for reading byte data
+pybase64
