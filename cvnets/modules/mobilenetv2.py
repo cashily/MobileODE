@@ -247,7 +247,20 @@ class InvertedResidual(BaseModule):
             self.use_res_connect,
         )
     
+class neuralODE(torch.nn.Module):
+    def __init__(self,gamma):
+        super(neuralODE, self).__init__()
+        self.gamma = gamma
+        self.relu= nn.ReLU6()
+
+    def forward(self, t, y):
+        # print(t,y.shape, self.gamma.shape)
+        # dydt = torch.pow( self.relu(y+self.gamma), 2)
+        dydt = y+self.gamma
+
+        return dydt
         
+   
 class CustomActivation(nn.Module):
     def __init__(self,num_layers, epsilon=1):
         super(CustomActivation, self).__init__()
@@ -284,7 +297,8 @@ class AdaptiveDiscretizedNeuralODE8_Spatial_pointwise_view_17(nn.Module):
         self.relu6 = CustomActivation(self.num_layers)
         self.tanh = nn.Tanh()
         self.sigmoid=nn.Sigmoid()
-     
+        self.all_y0_outputs=[]
+
     def feature_reshape(self, x, b, c, W):
         x_reshaped = x.view(b, c, -1)  # (b, c, H*W)
         x_reshaped = x_reshaped.permute(0, 2, 1).contiguous()  # (b, H*W, c)
@@ -301,29 +315,37 @@ class AdaptiveDiscretizedNeuralODE8_Spatial_pointwise_view_17(nn.Module):
     def forward(self, x):
         B, C, H, W = x.size()
         sqrt_c = int(C ** 0.5)
-        
-        # 重塑输入
-        x1 = self.feature_reshape(x, B, C, W)  # (b, H*W, sqrt(c), sqrt(c))
+
+        x1 = self.feature_reshape(x, B, C, W)  # (B, H*W, out, out)
         y0 = x1
 
-        # 通过 delta_t 规范化
-        # delta_t_normalized =  torch.softmax(self.delta_t, dim=0)
-        delta_t_normalized =  self.relu6(self.delta_t)
+        delta_t_normalized = self.relu6(self.delta_t)
 
-        y0_expanded = y0.unsqueeze(0).repeat(self.num_layers, 1, 1, 1, 1)  # 形状变为 [3, 1, 50176, 12, 12]
-        results = torch.matmul(y0_expanded, self.matrices)  # 结果形状将为 [3, 1, 50176, 12, 12]
+        # ⚠️ 每次 forward 前清空，避免显存泄漏
+        self.all_y0_outputs = []
 
-        # 使用 delta_t_normalized 更新状态
         for layer in range(self.num_layers):
-            if delta_t_normalized[layer] != 0:
-                dydt = -y0 + self.sigma(y0 + results[layer])
-                y0 = y0 + delta_t_normalized[layer] * dydt[layer]
+            dt = delta_t_normalized[layer]
+            if dt.item() == 0:
+                continue
 
-        y_out = (y0 + x1).view(B, H, W, self.out * self.out)  # 处理维度为 (b, H, W, sqrt_c * sqrt_c)
-        y0 = y_out.permute(0, 3, 1, 2)  # 最终转换为 (b, c, H, W)
-        # pdb.set_trace()
+            # 单层 matmul（不会复制 y0）
+            result = torch.matmul(y0, self.matrices[layer])
+
+            dydt = -y0 + self.sigma(y0 + result)
+            y0 = y0 + dt * dydt
+
+            # 如果只是调试/可视化，务必 detach
+            self.all_y0_outputs.append(
+                y0.view(B, H, W, self.out * self.out).detach()
+            )
+
+        y_out = (y0 + x1).view(B, H, W, self.out * self.out)
+        y0 = y_out.permute(0, 3, 1, 2)
+
         return y0
-class InvertedResidual_ode(BaseModule): #COS module
+
+class InvertedResidual_ode(BaseModule):
     """
     This class implements the inverted residual block, as described in `MobileNetv2 <https://arxiv.org/abs/1801.04381>`_ paper
 
@@ -413,6 +435,7 @@ class InvertedResidual_ode(BaseModule): #COS module
             return x + self.block(x)
         else:
             return self.block(x)
+
 
     def __repr__(self) -> str:
         return "{}(in_channels={}, out_channels={}, stride={}, exp={}, dilation={}, skip_conn={})".format(
